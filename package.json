@@ -1,5 +1,6 @@
 {
   "name": "a2_60304642",
+  "type":"commonjs",
   "version": "1.0.0",
   "main": "main.js",
   "scripts": {

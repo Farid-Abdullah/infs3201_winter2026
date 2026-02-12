@@ -14,7 +14,7 @@ async function showAllEmployees(){
      * @returns {void}
      */
 
-    const employees = await business.getAllEmployees("employees.json");
+    const employees = await business.getAllEmployees();
     console.log("Employee ID Name\t\tPhone")
     console.log("----------- ------------------- ---------")
     for (let e of employees) {

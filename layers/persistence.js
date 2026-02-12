@@ -7,16 +7,16 @@ async function loadData(fileName) {
      * @returns {Objects[]} returns list of objects from the JSON file.
      */
 
-    const employees = await fs.readFile('data/'+fileName);
-    return JSON.parse(employees);
+    const data = await fs.readFile('data/' + fileName);
+    return JSON.parse(data);
 }
-async function getAllEmployees(){
-      /**
-     * loads the list of employees and returns it to business layer.
-     * @returns {promise<object[]>}
-     */
+async function getAllEmployees() {
+    /**
+   * loads the list of employees and returns it to business layer.
+   * @returns {promise<object[]>}
+   */
     return await loadData("employees.json");
-     
+
 }
 async function writeToFile(newData, fileName) {
     /**
@@ -27,7 +27,7 @@ async function writeToFile(newData, fileName) {
      */
 
     const newList = JSON.stringify(newData, null, 2); // null, 2 to auto formate the stringified json
-    await fs.writeFile('data/'+fileName, newList, "utf-8");
+    await fs.writeFile('data/' + fileName, newList, "utf-8");
 }
 function makeID4spacesLong(letter, idNum) {
     /**
@@ -84,6 +84,49 @@ async function getEmployeeShiftIds(e_id) {
     }
     return shiftIds;
 }
+
+function computeShiftDuration(startTime, endTime) {
+    /**
+     * source: Gemini, prompt: "generate a function: computeShiftDuration(startTime->String, endTime->String) which tells the hours between startTime and endTime. include proper jsDoc for this function"
+     * Calculates the total duration between two time strings in hours.
+     * Assumes 24-hour format (e.g., "08:30", "17:00").
+     * * @param {string} startTime - The start time of the shift (HH:mm).
+     * @param {string} endTime - The end time of the shift (HH:mm).
+     * @returns {number} The duration of the shift in hours (e.g., 8.5).
+     */
+
+    // Split strings into hours and minutes
+    const [startHrs, startMins] = startTime.split(':').map(Number);
+    const [endHrs, endMins] = endTime.split(':').map(Number);
+
+    // Convert everything to total minutes from the start of the day
+    const startTotalMinutes = (startHrs * 60) + startMins;
+    const endTotalMinutes = (endHrs * 60) + endMins;
+
+    // Calculate difference
+    const diffInMinutes = endTotalMinutes - startTotalMinutes;
+
+    // Return as hours (e.g., 450 minutes -> 7.5 hours)
+    return diffInMinutes / 60;
+}
+async function isDailyHoursExceeded(employee_shifts,dateToCheck){
+    const config = await loadData("config.json");
+    const maxHoursAllowed = config.maxDailyHours;
+
+    const allShifts = await loadData("shifts.json");
+  
+    let totalHours = 0;
+    for(let shift of allShifts){
+        if(shift.date === dateToCheck && employee_shifts.includes(shift.shiftId)){
+            totalHours+= computeShiftDuration(shift.startTime, shift.endTime)
+          
+        }
+    }
+ 
+    return totalHours>maxHoursAllowed;
+
+
+}
 async function assignEmployee(e_id, s_id) {
 
     /**
@@ -109,29 +152,38 @@ async function assignEmployee(e_id, s_id) {
         }
     }
     if (!e_exists) {
-       
+
         return "Employee does not exist.";
     }
     //making sure shift with s_id already exists:
     let s_exists = false;
+    let dateToCheck // for the schedule limitation feature
     for (let s of shifts) {
         if (s.shiftId === s_id) {
             s_exists = true;
+            dateToCheck = s.date; // catch the shift date for later use
             break;
         }
     }
     if (!s_exists) {
-       
+
         return "Shift does not exist";
     }
 
     // make sure the employee is not assigned to the s_id shift
-    const alreadyAssigned = (await getEmployeeShiftIds(e_id)).includes(s_id);
+    const employeeShifts = await getEmployeeShiftIds(e_id)
+    const alreadyAssigned = employeeShifts.includes(s_id);
     if (alreadyAssigned) {
-        
+
         return "Employee already assigned to shift";
     }
     // end of checking errors
+    
+    // making sure daily hours don't exceed:
+    employeeShifts.push(s_id);
+    if(await isDailyHoursExceeded(employeeShifts, dateToCheck)){
+        return "Daily hours Exceeded for employee\nshift not recorded"
+    }
 
     //assigning employee e_id to s_id shift:
     let assignments = await loadData("assignments.json");
@@ -149,7 +201,8 @@ async function assignEmployee(e_id, s_id) {
 
 async function getEmployeeSchedule(e_id) {
     /**
-     * Choice 4: Generates and logs a CSV-style schedule for a specific employee.
+     * gets all shift ids associated with e_id as list from assignments.json
+     * returns full info of those shifts from shifts.json
      * @param {string} e_id - The unique employee identifier.
      * @returns {Promise<object[]>} returns list of shifts assigned to e_id
      */
@@ -160,11 +213,11 @@ async function getEmployeeSchedule(e_id) {
     let currentShiftIds = await getEmployeeShiftIds(e_id);
 
     //getting shifts as list from persistance layer
-    let allShifts = await loadData("shifts.json"); 
+    let allShifts = await loadData("shifts.json");
     let employeeShifts = []
     for (let shift of allShifts) {
         if (currentShiftIds.includes(shift.shiftId)) {
-            
+
             employeeShifts.push(shift);
 
         }
@@ -173,6 +226,6 @@ async function getEmployeeSchedule(e_id) {
 
 }
 module.exports = {
-     getAllEmployees, getEmployeeSchedule, addEmployee,assignEmployee
+    getAllEmployees, getEmployeeSchedule, addEmployee, assignEmployee
 }
 
